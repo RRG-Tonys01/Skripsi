@@ -39,7 +39,9 @@ class MergeData:
         mergedData['Minyak Mentah'] = mergedData['Minyak Mentah'].replace(
             0.000, np.NaN)
 
+        # Return nilai dari Merged Data Tanpa proses Cleaing Data
+        # return mergedData
+
         # Menghapus data yang bernilai NaN
         merged_data_clean = mergedData.dropna()
-
         return merged_data_clean
