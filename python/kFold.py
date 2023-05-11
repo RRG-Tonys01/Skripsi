@@ -5,6 +5,9 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
+from sklearn.model_selection import KFold
 from objectClass import *
 from function import *
 from sklearn.preprocessing import MinMaxScaler
@@ -79,6 +82,7 @@ clean_data = mergedData.merge_data()
 # print("======== Data Historis Kurs Rupiah ========")
 # print(kurs_data)
 
+
 ####################################################################
 ###                                                              ###
 ###         PEMODELAN ALGORITMA LONG-SHORT TERM MEMORY           ###
@@ -87,63 +91,77 @@ clean_data = mergedData.merge_data()
 ####################################################################
 
 scaler = MinMaxScaler(feature_range=(0, 1))
-data = clean_data[['Emas', 'IHSG', 'Minyak Mentah', 'Kurs USD/IDR']]
-scaled_data = scaler.fit_transform(data.values)
+data = clean_data[['Emas', 'IHSG', 'Minyak Mentah', 'Kurs USD/IDR']].values
+scaled_data = scaler.fit_transform(data)
+# print(scaled_data)
+
+# Membagi data menjadi data latih dan data uji dengan perbandingan 80:20.
+training_size = int(len(scaled_data) * 0.8)
+testing_size = len(scaled_data) - training_size
+training_data = scaled_data[0:training_size, :]
+testing_data = scaled_data[training_size:len(scaled_data), :]
 
 
-# 4. Membuat dataset dengan time step
+# Membuat dataset terbaru
 def create_dataset(data, time_step=1):
     X, Y = [], []
-    for i in range(len(data)-time_step):
-        a = data[i:(i+time_step), :]
+    for i in range(len(data)-time_step-1):
+        a = data[i:(i+time_step), 0]
         X.append(a)
         Y.append(data[i + time_step, 0])
     return np.array(X), np.array(Y)
 
 
+# Menambahkan data IHSG, Minyak Mentah, dan Kurs USD/IDR ke dalam dataset
 time_step = 50
 X, Y = create_dataset(scaled_data, time_step)
+data_X = np.zeros((X.shape[0], X.shape[1], 4))
+data_X[:, :, 0] = X[:, 0][:, np.newaxis]
+data_X[:, :, 1] = scaled_data[50:1280, 1][:, np.newaxis]
+data_X[:, :, 2] = scaled_data[50:1280, 2][:, np.newaxis]
+data_X[:, :, 3] = scaled_data[50:1280, 3][:, np.newaxis]
 
-# 5. Membagi dataset menjadi training dan testing set
-train_size = int(len(X) * 0.8)
-test_size = len(X) - train_size
-X_train, Y_train = X[:train_size], Y[:train_size]
-X_test, Y_test = X[train_size:], Y[train_size:]
+# print("=============== Transformasi Data ===============")
+# print(scaled_data)
+# print("================== ----------- ==================")
+# print("================== New Dataset ==================")
+# print(X)
+# print("================== ----------- ==================")
+# print("=========  Penambahan Variable ke Dalam =========")
+# print("================ Dataset Terbaru ================")
+# print(data_X)
+# print("================== ----------- ==================")
 
-# 6. Membuat model LSTM
-model = tf.keras.models.Sequential()
-model.add(tf.keras.layers.LSTM(
-    50, return_sequences=True, input_shape=(time_step, 4)))
-model.add(tf.keras.layers.LSTM(50, return_sequences=True))
-model.add(tf.keras.layers.LSTM(50))
-model.add(tf.keras.layers.Dense(1))
+# Membuat model LSTM dengan menggunakan library tensorflow.
+model = Sequential()
+model.add(LSTM(50, return_sequences=True, input_shape=(time_step, 4)))
+model.add(LSTM(50, return_sequences=True))
+model.add(LSTM(50))
+model.add(Dense(1))
 model.compile(loss='mean_squared_error', optimizer='adam')
 
-# 7. Melatih model
-model.fit(X_train, Y_train, validation_data=(
-    X_test, Y_test), epochs=50, batch_size=64, verbose=1)
+# Melakukan cross-validation
+kf = KFold(n_splits=5)
+mse_scores = []
+rmse_scores = []
+for train_index, test_index in kf.split(data_X):
+    X_train, X_test = data_X[train_index], data_X[test_index]
+    Y_train, Y_test = Y[train_index], Y[test_index]
+    model.fit(X_train, Y_train, epochs=50, batch_size=64, verbose=1)
+    train_predict = model.predict(X_train)
+    test_predict = model.predict(X_test)
+    train_predict = scaler.inverse_transform(train_predict)
+    Y_train = scaler.inverse_transform([Y_train])
+    test_predict = scaler.inverse_transform(test_predict)
+    Y_test = scaler.inverse_transform([Y_test])
+    mse_train = mean_squared_error(Y_train[0], train_predict[:, 0])
+    mse_test = mean_squared_error(Y_test[0], test_predict[:, 0])
+    rmse_train = np.sqrt(mse_train)
+    rmse_test = np.sqrt(mse_test)
+    mse_scores.append(mse_test)
+    rmse_scores.append(rmse_test)
 
-# 8. Melakukan prediksi
-train_predict = model.predict(X_train)
-test_predict = model.predict(X_test)
-
-# 9. Mengembalikan data ke skala semula
-train_predict = scaler.inverse_transform(train_predict)
-Y_train = scaler.inverse_transform(Y_train.reshape(-1, 1))
-test_predict = scaler.inverse_transform(test_predict)
-Y_test = scaler.inverse_transform(Y_test.reshape(-1, 1))
-
-
-# 10. Menghitung nilai error
-rmse_train = np.sqrt(mean_squared_error(Y_train[0], train_predict[:, 0]))
-rmse_test = np.sqrt(mean_squared_error(Y_test[0], test_predict[:, 0]))
-print("MSE train : ", mean_squared_error(Y_train[0], train_predict[:, 0]))
-print("MSE test : ", mean_squared_error(Y_test[0], test_predict[:, 0]))
-print("RMSE train: ", rmse_train)
-print("RMSE test: ", rmse_test)
-
-# 11. Plot hasil prediksi
-plt.plot(Y_test[0], label='Actual')
-plt.plot(test_predict, label='Predicted')
-plt.legend()
-plt.show()
+# # Menampilkan hasil evaluasi
+# print("MSE scores:", mse_scores)
+# print("RMSE scores:", rmse_scores)
+# print("Average RMSE:", np.mean(rmse_scores))

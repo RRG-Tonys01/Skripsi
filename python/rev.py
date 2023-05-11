@@ -79,6 +79,7 @@ clean_data = mergedData.merge_data()
 # print("======== Data Historis Kurs Rupiah ========")
 # print(kurs_data)
 
+
 ####################################################################
 ###                                                              ###
 ###         PEMODELAN ALGORITMA LONG-SHORT TERM MEMORY           ###
@@ -87,63 +88,73 @@ clean_data = mergedData.merge_data()
 ####################################################################
 
 scaler = MinMaxScaler(feature_range=(0, 1))
-data = clean_data[['Emas', 'IHSG', 'Minyak Mentah', 'Kurs USD/IDR']]
-scaled_data = scaler.fit_transform(data.values)
+data = clean_data['Emas'].values.reshape(-1, 1)
+scaled_data = scaler.fit_transform(data)
+
+# Membagi data menjadi data latih dan data uji dengan perbandingan 80:20.
+training_size = int(len(scaled_data) * 0.8)
+testing_size = len(scaled_data) - training_size
+training_data = scaled_data[0:training_size, :]
+testing_data = scaled_data[training_size:len(scaled_data), :]
+print(len(training_data), len(testing_data))
 
 
-# 4. Membuat dataset dengan time step
 def create_dataset(data, time_step=1):
     X, Y = [], []
-    for i in range(len(data)-time_step):
-        a = data[i:(i+time_step), :]
+    for i in range(len(data)-time_step-1):
+        a = data[i:(i+time_step), 0]
         X.append(a)
         Y.append(data[i + time_step, 0])
     return np.array(X), np.array(Y)
 
 
+# Pengujian nilai time_step adalah 50,100, 150, dan 200
 time_step = 50
-X, Y = create_dataset(scaled_data, time_step)
+# time_step = 100
+# time_step = 150
+# time_step = 200
+X_train, Y_train = create_dataset(training_data, time_step)
+X_test, Y_test = create_dataset(testing_data, time_step)
+print(len(X_train), len(X_test))
 
-# 5. Membagi dataset menjadi training dan testing set
-train_size = int(len(X) * 0.8)
-test_size = len(X) - train_size
-X_train, Y_train = X[:train_size], Y[:train_size]
-X_test, Y_test = X[train_size:], Y[train_size:]
 
-# 6. Membuat model LSTM
+# Membuat model LSTM dengan menggunakan library tensorflow.
 model = tf.keras.models.Sequential()
 model.add(tf.keras.layers.LSTM(
-    50, return_sequences=True, input_shape=(time_step, 4)))
+    50, return_sequences=True, input_shape=(time_step, 1)))
 model.add(tf.keras.layers.LSTM(50, return_sequences=True))
 model.add(tf.keras.layers.LSTM(50))
 model.add(tf.keras.layers.Dense(1))
+
+# Evaluasi Menggunakan MSE dan RMSE
 model.compile(loss='mean_squared_error', optimizer='adam')
 
-# 7. Melatih model
+
+# Melakukan pelatihan (training) pada model dengan data latih yang telah dibuat.
 model.fit(X_train, Y_train, validation_data=(
     X_test, Y_test), epochs=50, batch_size=64, verbose=1)
 
-# 8. Melakukan prediksi
+# Penggunaan Epoch 100 sudah tidak memungkinkan, dikarenakan akan
+# menimbulkan overfitting pada data latih
+# model.fit(X_train, Y_train, validation_data=(
+#     X_test, Y_test), epochs=100, batch_size=64, verbose=1)
+
+# Melakukan prediksi pada data uji dengan menggunakan model yang telah dilatih.
 train_predict = model.predict(X_train)
 test_predict = model.predict(X_test)
 
-# 9. Mengembalikan data ke skala semula
+
+# Melakukan invers normalisasi pada hasil prediksi dan data sebenarnya.
 train_predict = scaler.inverse_transform(train_predict)
-Y_train = scaler.inverse_transform(Y_train.reshape(-1, 1))
+Y_train = scaler.inverse_transform([Y_train])
 test_predict = scaler.inverse_transform(test_predict)
-Y_test = scaler.inverse_transform(Y_test.reshape(-1, 1))
+Y_test = scaler.inverse_transform([Y_test])
 
 
-# 10. Menghitung nilai error
-rmse_train = np.sqrt(mean_squared_error(Y_train[0], train_predict[:, 0]))
-rmse_test = np.sqrt(mean_squared_error(Y_test[0], test_predict[:, 0]))
-print("MSE train : ", mean_squared_error(Y_train[0], train_predict[:, 0]))
-print("MSE test : ", mean_squared_error(Y_test[0], test_predict[:, 0]))
-print("RMSE train: ", rmse_train)
-print("RMSE test: ", rmse_test)
-
-# 11. Plot hasil prediksi
-plt.plot(Y_test[0], label='Actual')
-plt.plot(test_predict, label='Predicted')
-plt.legend()
-plt.show()
+# # Menghitung nilai rata-rata error pada data latih dan data uji.
+# rmse_train = np.sqrt(mean_squared_error(Y_train[0], train_predict[:, 0]))
+# rmse_test = np.sqrt(mean_squared_error(Y_test[0], test_predict[:, 0]))
+# print("MSE train : ", mean_squared_error(Y_train[0], train_predict[:, 0]))
+# print("MSE test : ", mean_squared_error(Y_test[0], test_predict[:, 0]))
+# print("RMSE train: ", rmse_train)
+# print("RMSE test: ", rmse_test)
