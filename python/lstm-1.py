@@ -9,9 +9,6 @@ from objectClass import *
 from function import *
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error
-from sklearn.preprocessing import MinMaxScaler
-# from tensorflow.keras.models import Sequential
-# from tensorflow.keras.layers import LSTM, Dense
 
 # Mengabaikan semua Warning pada Output
 warnings.filterwarnings('ignore')
@@ -61,7 +58,6 @@ mergedData = MergeData(emas_data, ihsg_data, minyak_mentah_data, kurs_data)
 clean_data = mergedData.merge_data()
 
 # print(clean_data)
-# clean_data.to_csv('../dataset/Prediksi Harga Emas.csv', index=False)
 
 # Describe nilai Statistika, seperti  : count, mean, std, min, 25%, 50%, 75%, dan max
 # print(clean_data.describe())
@@ -95,63 +91,59 @@ data = clean_data[['Emas', 'IHSG', 'Minyak Mentah', 'Kurs USD/IDR']]
 scaled_data = scaler.fit_transform(data.values)
 
 
-# Normalisasi data menggunakan MinMaxScaler
-scaler = MinMaxScaler()
-data = clean_data[['Emas', 'IHSG', 'Minyak Mentah', 'Kurs USD/IDR']]
-scaled_data = scaler.fit_transform(data)
-
-# Buat fungsi untuk membuat dataset dengan time steps
-
-
-def create_dataset(data, time_steps=1):
-    X, y = [], []
-    for i in range(len(data)-time_steps):
-        X.append(data[i:i+time_steps])
-        y.append(data[i+time_steps])
-    return np.array(X), np.array(y)
+# 4. Membuat dataset dengan time step
+def create_dataset(data, time_step=1):
+    X, Y = [], []
+    for i in range(len(data)-time_step):
+        a = data[i:(i+time_step), :]
+        X.append(a)
+        Y.append(data[i + time_step, 0])
+    return np.array(X), np.array(Y)
 
 
-# Buat dataset dengan time steps sebesar 3
-time_steps = 50
-X, y = create_dataset(scaled_data, time_steps)
+time_step = 50
+X, Y = create_dataset(scaled_data, time_step)
 
-# Split dataset menjadi data training dan data testing
-train_size = int(0.8 * len(X))
-X_train, y_train = X[:train_size], y[:train_size]
-X_test, y_test = X[train_size:], y[train_size:]
+# 5. Membagi dataset menjadi training dan testing set
+train_size = int(len(X) * 0.8)
+test_size = len(X) - train_size
+X_train, Y_train = X[:train_size], Y[:train_size]
+X_test, Y_test = X[train_size:], Y[train_size:]
 
-# Buat model LSTM
+# 6. Membuat model LSTM
 model = tf.keras.models.Sequential()
-model.add(tf.keras.layers.LSTM(64, activation='relu', input_shape=(
-    time_steps, X_train.shape[2])))
-model.add(tf.keras.layers.Dense(32, activation='relu'))
-model.add(tf.keras.layers.Dense(X_train.shape[2]))
-model.compile(optimizer='adam', loss='mse')
+model.add(tf.keras.layers.LSTM(
+    50, return_sequences=True, input_shape=(time_step, 4)))
+model.add(tf.keras.layers.LSTM(50, return_sequences=True))
+model.add(tf.keras.layers.LSTM(50))
+model.add(tf.keras.layers.Dense(1))
+model.compile(loss='mean_squared_error', optimizer='adam')
 
-# Training model
-model.fit(X_train, y_train, epochs=50, batch_size=16, verbose=1)
+# 7. Melatih model
+model.fit(X_train, Y_train, validation_data=(
+    X_test, Y_test), epochs=50, batch_size=64, verbose=1)
 
-# Evaluasi model
-mse = model.evaluate(X_test, y_test)
-print('MSE:', mse)
+# 8. Melakukan prediksi
+train_predict = model.predict(X_train)
+test_predict = model.predict(X_test)
 
-# Prediksi harga emas untuk waktu ke-1 hingga waktu ke-3 di masa depan
-last_X = scaled_data[-time_steps:]
-last_X = last_X.reshape((1, time_steps, X_train.shape[2]))
-prediction = model.predict(last_X)
+# 9. Mengembalikan data ke skala semula
+train_predict = scaler.inverse_transform(train_predict)
+Y_train = scaler.inverse_transform(Y_train.reshape(-1, 1))
+test_predict = scaler.inverse_transform(test_predict)
+Y_test = scaler.inverse_transform(Y_test.reshape(-1, 1))
 
-# Invers normalisasi data
-prediction = scaler.inverse_transform(prediction)
 
-# Print prediksi harga emas
-print('Prediksi harga emas untuk waktu ke-1 hingga waktu ke-3 di masa depan:')
-print(prediction)
+# 10. Menghitung nilai error
+rmse_train = np.sqrt(mean_squared_error(Y_train[0], train_predict[:, 0]))
+rmse_test = np.sqrt(mean_squared_error(Y_test[0], test_predict[:, 0]))
+print("MSE train : ", mean_squared_error(Y_train[0], train_predict[:, 0]))
+print("MSE test : ", mean_squared_error(Y_test[0], test_predict[:, 0]))
+print("RMSE train: ", rmse_train)
+print("RMSE test: ", rmse_test)
 
-# # Buat chart hasil prediksi harga emas
-# plt.plot(clean_data['Emas'].values[train_size+time_steps:], label='Actual')
-# plt.plot(np.arange(train_size+time_steps, len(clean_data)),
-#          prediction.flatten(), label='Prediction')
-# plt.xlabel('Tanggal')
-# plt.ylabel('Harga Emas')
-# plt.legend()
-# plt.show()
+# 11. Plot hasil prediksi
+plt.plot(Y_test[0], label='Actual')
+plt.plot(test_predict, label='Predicted')
+plt.legend()
+plt.show()
