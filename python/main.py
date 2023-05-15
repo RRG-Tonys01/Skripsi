@@ -33,13 +33,13 @@ minyak_mentah_dataset = CSVReader(
     "../dataset/Data Historis Minyak Mentah WTI Berjangka.csv")
 kurs_dataset = CSVReader("../dataset/Data Historis USD_IDR.csv")
 
-# Membersihkan data
+# # Mengubah tipe data
 emas_dataset.change_data_type()
 ihsg_dataset.change_data_type()
 minyak_mentah_dataset.change_data_type()
 kurs_dataset.change_data_type()
 
-# Mendapatkan data
+# # Mendapatkan data
 emas_data = emas_dataset.get_data()
 ihsg_data = ihsg_dataset.get_data()
 minyak_mentah_data = minyak_mentah_dataset.get_data()
@@ -49,14 +49,13 @@ kurs_data = kurs_dataset.get_data()
 emas_data, ihsg_data, minyak_mentah_data, kurs_data = fill_missing_dates(
     start_date, end_date, emas_data, ihsg_data, minyak_mentah_data, kurs_data)
 
-
 # urutkan DataFrame berdasarkan tanggal
 emas_data = emas_data.sort_values(by='Tanggal')
 ihsg_data = ihsg_data.sort_values(by='Tanggal')
 minyak_mentah_data = minyak_mentah_data.sort_values(by='Tanggal')
 kurs_data = kurs_data.sort_values(by='Tanggal')
 
-# Penggabungan seluruh dataset
+# # Penggabungan seluruh dataset
 mergedData = MergeData(emas_data, ihsg_data, minyak_mentah_data, kurs_data)
 clean_data = mergedData.merge_data()
 
@@ -74,14 +73,6 @@ clean_data = mergedData.merge_data()
 # sns.heatmap(clean_data.corr(), annot=True, cmap='coolwarm')
 # plt.show()
 
-# print("======== Data Historis Emas ========")
-# print(emas_data)
-# print("======== Data Historis IHSG ========")
-# print(ihsg_data)
-# print("======== Data Historis Minyak Mentah ========")
-# print(minyak_mentah_data)
-# print("======== Data Historis Kurs Rupiah ========")
-# print(kurs_data)
 
 ####################################################################
 ###                                                              ###
@@ -90,9 +81,9 @@ clean_data = mergedData.merge_data()
 ###                                                              ###
 ####################################################################
 
-scaler = MinMaxScaler(feature_range=(0, 1))
-data = clean_data[['Emas', 'IHSG', 'Minyak Mentah', 'Kurs USD/IDR']]
-scaled_data = scaler.fit_transform(data.values)
+# scaler = MinMaxScaler(feature_range=(0, 1))
+# data = clean_data[['Emas', 'IHSG', 'Minyak Mentah', 'Kurs USD/IDR']]
+# scaled_data = scaler.fit_transform(data.values)
 
 
 # Normalisasi data menggunakan MinMaxScaler
@@ -100,9 +91,8 @@ scaler = MinMaxScaler()
 data = clean_data[['Emas', 'IHSG', 'Minyak Mentah', 'Kurs USD/IDR']]
 scaled_data = scaler.fit_transform(data)
 
+
 # Buat fungsi untuk membuat dataset dengan time steps
-
-
 def create_dataset(data, time_steps=1):
     X, y = [], []
     for i in range(len(data)-time_steps):
@@ -129,7 +119,7 @@ model.add(tf.keras.layers.Dense(X_train.shape[2]))
 model.compile(optimizer='adam', loss='mse')
 
 # Training model
-model.fit(X_train, y_train, epochs=50, batch_size=16, verbose=1)
+model.fit(X_train, y_train, epochs=50, batch_size=32, verbose=1)
 
 # Evaluasi model
 mse = model.evaluate(X_test, y_test)
@@ -142,16 +132,14 @@ prediction = model.predict(last_X)
 
 # Invers normalisasi data
 prediction = scaler.inverse_transform(prediction)
+y_test = scaler.inverse_transform(y_test)
 
 # Print prediksi harga emas
 print('Prediksi harga emas untuk waktu ke-1 hingga waktu ke-3 di masa depan:')
 print(prediction)
 
-# # Buat chart hasil prediksi harga emas
-# plt.plot(clean_data['Emas'].values[train_size+time_steps:], label='Actual')
-# plt.plot(np.arange(train_size+time_steps, len(clean_data)),
-#          prediction.flatten(), label='Prediction')
-# plt.xlabel('Tanggal')
-# plt.ylabel('Harga Emas')
-# plt.legend()
-# plt.show()
+# Plot hasil prediksi dan nilai sebenarnya
+plt.plot(prediction[:, 0], label='Prediksi')
+plt.plot(y_test[:, 0], label='Nilai Sebenarnya')
+plt.legend()
+plt.show()

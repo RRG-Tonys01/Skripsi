@@ -9,8 +9,12 @@ class CSVReader:
     def change_data_type(self, date_col='Tanggal', val_col='Terakhir'):
         self.df[date_col] = pd.to_datetime(
             self.df[date_col], format="%d/%m/%Y")
-        self.df[val_col] = self.df[val_col].str.replace(
-            '.', '').str.replace(',', '.').astype(float)
+        # self.df[val_col] = self.df[val_col].str.replace(
+        #     '.', '').str.replace(',', '.').astype(float)
+        if val_col in self.df.columns and self.df[val_col].dtype == 'object':
+            self.df[val_col] = self.df[val_col].str.replace(
+                '.', '').str.replace(',', '.').astype(float)
+
         self.df = self.df[[date_col, val_col]]
 
     def get_data(self):
