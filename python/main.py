@@ -55,7 +55,7 @@ ihsg_data = ihsg_data.sort_values(by='Tanggal')
 minyak_mentah_data = minyak_mentah_data.sort_values(by='Tanggal')
 kurs_data = kurs_data.sort_values(by='Tanggal')
 
-# # Penggabungan seluruh dataset
+# Penggabungan seluruh dataset
 mergedData = MergeData(emas_data, ihsg_data, minyak_mentah_data, kurs_data)
 clean_data = mergedData.merge_data()
 
@@ -80,11 +80,6 @@ clean_data = mergedData.merge_data()
 ###                         (LSTM)                               ###
 ###                                                              ###
 ####################################################################
-
-# scaler = MinMaxScaler(feature_range=(0, 1))
-# data = clean_data[['Emas', 'IHSG', 'Minyak Mentah', 'Kurs USD/IDR']]
-# scaled_data = scaler.fit_transform(data.values)
-
 
 # Normalisasi data menggunakan MinMaxScaler
 scaler = MinMaxScaler()
@@ -116,14 +111,19 @@ model.add(tf.keras.layers.LSTM(64, activation='relu', input_shape=(
     time_steps, X_train.shape[2])))
 model.add(tf.keras.layers.Dense(32, activation='relu'))
 model.add(tf.keras.layers.Dense(X_train.shape[2]))
-model.compile(optimizer='adam', loss='mse')
+# model.compile(optimizer='adam', loss='mse')
+model.compile(optimizer='adam', loss='mae')
 
 # Training model
-model.fit(X_train, y_train, epochs=50, batch_size=32, verbose=1)
+model.fit(X_train, y_train, epochs=5, batch_size=64, verbose=1)
 
 # Evaluasi model
 mse = model.evaluate(X_test, y_test)
+rmse = np.sqrt(mse)
+# mae = model.evaluate(X_test, y_test)
 print('MSE:', mse)
+print('RMSE:', rmse)
+# print('MAE:', mae)
 
 # Prediksi harga emas untuk waktu ke-1 hingga waktu ke-3 di masa depan
 last_X = scaled_data[-time_steps:]
@@ -137,9 +137,10 @@ y_test = scaler.inverse_transform(y_test)
 # Print prediksi harga emas
 print('Prediksi harga emas untuk waktu ke-1 hingga waktu ke-3 di masa depan:')
 print(prediction)
+# print(prediction[0][0])
 
 # Plot hasil prediksi dan nilai sebenarnya
-plt.plot(prediction[:, 0], label='Prediksi')
-plt.plot(y_test[:, 0], label='Nilai Sebenarnya')
-plt.legend()
-plt.show()
+# plt.plot(prediction[:, 0], label='Prediksi')
+# plt.plot(y_test[:, 0], label='Nilai Sebenarnya')
+# plt.legend()
+# plt.show()

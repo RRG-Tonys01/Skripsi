@@ -5,13 +5,12 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
-from sklearn.model_selection import KFold
 from objectClass import *
 from function import *
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import KFold
 
 # Mengabaikan semua Warning pada Output
 warnings.filterwarnings('ignore')
@@ -33,13 +32,13 @@ minyak_mentah_dataset = CSVReader(
     "../dataset/Data Historis Minyak Mentah WTI Berjangka.csv")
 kurs_dataset = CSVReader("../dataset/Data Historis USD_IDR.csv")
 
-# Membersihkan data
+# # Mengubah tipe data
 emas_dataset.change_data_type()
 ihsg_dataset.change_data_type()
 minyak_mentah_dataset.change_data_type()
 kurs_dataset.change_data_type()
 
-# Mendapatkan data
+# # Mendapatkan data
 emas_data = emas_dataset.get_data()
 ihsg_data = ihsg_dataset.get_data()
 minyak_mentah_data = minyak_mentah_dataset.get_data()
@@ -48,7 +47,6 @@ kurs_data = kurs_dataset.get_data()
 # Menambahkan tanggal yang tidak termasuk ke dalam data
 emas_data, ihsg_data, minyak_mentah_data, kurs_data = fill_missing_dates(
     start_date, end_date, emas_data, ihsg_data, minyak_mentah_data, kurs_data)
-
 
 # urutkan DataFrame berdasarkan tanggal
 emas_data = emas_data.sort_values(by='Tanggal')
@@ -61,6 +59,7 @@ mergedData = MergeData(emas_data, ihsg_data, minyak_mentah_data, kurs_data)
 clean_data = mergedData.merge_data()
 
 # print(clean_data)
+# clean_data.to_csv('../dataset/Prediksi Harga Emas.csv', index=False)
 
 # Describe nilai Statistika, seperti  : count, mean, std, min, 25%, 50%, 75%, dan max
 # print(clean_data.describe())
@@ -73,15 +72,6 @@ clean_data = mergedData.merge_data()
 # sns.heatmap(clean_data.corr(), annot=True, cmap='coolwarm')
 # plt.show()
 
-# print("======== Data Historis Emas ========")
-# print(emas_data)
-# print("======== Data Historis IHSG ========")
-# print(ihsg_data)
-# print("======== Data Historis Minyak Mentah ========")
-# print(minyak_mentah_data)
-# print("======== Data Historis Kurs Rupiah ========")
-# print(kurs_data)
-
 
 ####################################################################
 ###                                                              ###
@@ -90,78 +80,76 @@ clean_data = mergedData.merge_data()
 ###                                                              ###
 ####################################################################
 
-scaler = MinMaxScaler(feature_range=(0, 1))
-data = clean_data[['Emas', 'IHSG', 'Minyak Mentah', 'Kurs USD/IDR']].values
+
+# Normalisasi data menggunakan MinMaxScaler
+scaler = MinMaxScaler()
+data = clean_data[['Emas', 'IHSG', 'Minyak Mentah', 'Kurs USD/IDR']]
 scaled_data = scaler.fit_transform(data)
-# print(scaled_data)
-
-# Membagi data menjadi data latih dan data uji dengan perbandingan 80:20.
-training_size = int(len(scaled_data) * 0.8)
-testing_size = len(scaled_data) - training_size
-training_data = scaled_data[0:training_size, :]
-testing_data = scaled_data[training_size:len(scaled_data), :]
 
 
-# Membuat dataset terbaru
-def create_dataset(data, time_step=1):
-    X, Y = [], []
-    for i in range(len(data)-time_step-1):
-        a = data[i:(i+time_step), 0]
-        X.append(a)
-        Y.append(data[i + time_step, 0])
-    return np.array(X), np.array(Y)
+def create_dataset(data, time_steps=1):
+    X, y = [], []
+    for i in range(len(data)-time_steps):
+        X.append(data[i:i+time_steps])
+        y.append(data[i+time_steps])
+    return np.array(X), np.array(y)
 
 
-# Menambahkan data IHSG, Minyak Mentah, dan Kurs USD/IDR ke dalam dataset
-time_step = 50
-X, Y = create_dataset(scaled_data, time_step)
-data_X = np.zeros((X.shape[0], X.shape[1], 4))
-data_X[:, :, 0] = X[:, 0][:, np.newaxis]
-data_X[:, :, 1] = scaled_data[50:1280, 1][:, np.newaxis]
-data_X[:, :, 2] = scaled_data[50:1280, 2][:, np.newaxis]
-data_X[:, :, 3] = scaled_data[50:1280, 3][:, np.newaxis]
+# Buat dataset dengan time steps sebesar 50
+time_steps = 50
+X, y = create_dataset(scaled_data, time_steps)
 
-# print("=============== Transformasi Data ===============")
-# print(scaled_data)
-# print("================== ----------- ==================")
-# print("================== New Dataset ==================")
-# print(X)
-# print("================== ----------- ==================")
-# print("=========  Penambahan Variable ke Dalam =========")
-# print("================ Dataset Terbaru ================")
-# print(data_X)
-# print("================== ----------- ==================")
-
-# Membuat model LSTM dengan menggunakan library tensorflow.
-model = Sequential()
-model.add(LSTM(50, return_sequences=True, input_shape=(time_step, 4)))
-model.add(LSTM(50, return_sequences=True))
-model.add(LSTM(50))
-model.add(Dense(1))
-model.compile(loss='mean_squared_error', optimizer='adam')
-
-# Melakukan cross-validation
-kf = KFold(n_splits=5)
+# Lakukan k-Fold Cross Validation dengan k=5
+k = 5
+kf = KFold(n_splits=k, shuffle=True)
 mse_scores = []
 rmse_scores = []
-for train_index, test_index in kf.split(data_X):
-    X_train, X_test = data_X[train_index], data_X[test_index]
-    Y_train, Y_test = Y[train_index], Y[test_index]
-    model.fit(X_train, Y_train, epochs=50, batch_size=64, verbose=1)
-    train_predict = model.predict(X_train)
-    test_predict = model.predict(X_test)
-    train_predict = scaler.inverse_transform(train_predict)
-    Y_train = scaler.inverse_transform([Y_train])
-    test_predict = scaler.inverse_transform(test_predict)
-    Y_test = scaler.inverse_transform([Y_test])
-    mse_train = mean_squared_error(Y_train[0], train_predict[:, 0])
-    mse_test = mean_squared_error(Y_test[0], test_predict[:, 0])
-    rmse_train = np.sqrt(mse_train)
-    rmse_test = np.sqrt(mse_test)
-    mse_scores.append(mse_test)
-    rmse_scores.append(rmse_test)
+mae_scores = []
+prediction_scores = []
 
-# # Menampilkan hasil evaluasi
-# print("MSE scores:", mse_scores)
-# print("RMSE scores:", rmse_scores)
-# print("Average RMSE:", np.mean(rmse_scores))
+for train_index, test_index in kf.split(X):
+    # Split dataset menjadi data training dan data testing
+    X_train, y_train = X[train_index], y[train_index]
+    X_test, y_test = X[test_index], y[test_index]
+
+    # Buat model LSTM
+    model = tf.keras.models.Sequential()
+    model.add(tf.keras.layers.LSTM(64, activation='relu', input_shape=(
+        time_steps, X_train.shape[2])))
+    model.add(tf.keras.layers.Dense(32, activation='relu'))
+    model.add(tf.keras.layers.Dense(X_train.shape[2]))
+    model.compile(optimizer='adam', loss='mse')
+    # model.compile(optimizer='adam', loss='mae')
+
+    # Training model
+    model.fit(X_train, y_train, epochs=100, batch_size=64, verbose=0)
+
+    # Evaluasi model
+    mse = model.evaluate(X_test, y_test)
+    # mae = model.evaluate(X_test, y_test)
+    mse_scores.append(mse)
+    rmse_scores.append(np.sqrt(mse))
+    # mae_scores.append(mae)
+
+    # Prediksi harga emas untuk waktu ke-1 hingga waktu ke-3 di masa depan
+    last_X = scaled_data[-time_steps:]
+    last_X = last_X.reshape((1, time_steps, X_train.shape[2]))
+    prediction = model.predict(last_X)
+
+    # Invers normalisasi data
+    prediction = scaler.inverse_transform(prediction)
+    y_test = scaler.inverse_transform(y_test)
+
+    prediction_scores.append(prediction[0][0])
+
+# Print hasil evaluasi dari k-Fold Cross Validation
+print('MSE scores:', mse_scores)
+print('RMSE scores:', rmse_scores)
+# print('MAE scores:', mae_scores)
+print('Rata-rata MSE:', np.mean(mse_scores))
+print('Rata-rata RMSE:', np.mean(rmse_scores))
+# print('Rata-rata MAE:', np.mean(mae_scores))
+
+# Print prediksi harga emas
+print('Prediksi harga emas untuk waktu ke-1 hingga waktu ke-3 di masa depan:')
+print(prediction_scores)
